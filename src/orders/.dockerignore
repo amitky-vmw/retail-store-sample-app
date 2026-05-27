@@ -1,8 +1,20 @@
-Dockerfile
-.dockerignore
-docker-compose.yml
+.git
+.gitmodules
 .gitignore
-chart
-scripts
-target
-.idea
+
+# Exclude other services (not needed for orders build)
+src/ui
+src/catalog
+src/cart
+src/checkout
+src/load-generator
+
+# Exclude test and build output from orders
+src/orders/src/test
+src/orders/target
+
+# Misc
+**/*.md
+**/chart
+**/docker-compose.yml
+**/.github

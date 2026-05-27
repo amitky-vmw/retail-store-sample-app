@@ -1,40 +1,46 @@
-FROM node:20-alpine AS build
-WORKDIR /usr/src/app
-COPY --chown=node:node package*.json ./
-COPY --chown=node:node . .
-RUN yarn install --frozen-lockfile
-RUN yarn build
-USER node
+# Stage 1: Build
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build
 
-
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023
-
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    nodejs20 \
-    shadow-utils \
-    && \
+RUN dnf update -y && \
+    dnf install -y nodejs20 nodejs20-npm shadow-utils && \
     dnf clean all
 
-RUN alternatives --install /usr/bin/node node /usr/bin/node-20 90
+# Install corepack and enable Yarn 4 (Berry)
+RUN npm install -g corepack && corepack enable
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
+WORKDIR /build
 
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
+# Copy package manifests and yarn files first for layer caching
+COPY src/checkout/package.json src/checkout/yarn.lock src/checkout/.yarnrc.yml ./
+COPY src/checkout/.yarn ./.yarn
+
+RUN yarn install --immutable
+
+# Copy source and build
+COPY src/checkout/src ./src
+COPY src/checkout/tsconfig.json src/checkout/tsconfig.build.json src/checkout/nest-cli.json ./
+
+RUN yarn build
+
+# Stage 2: Runtime
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+
+RUN dnf update -y && \
+    dnf install -y nodejs20 shadow-utils && \
+    dnf clean all
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
+
+# Copy built artifacts and production node_modules from build stage
+COPY --from=build /build/dist ./dist
+COPY --from=build /build/node_modules ./node_modules
+
+RUN chown -R appuser:appuser /app
+
 USER appuser
 
-COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
-COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+EXPOSE 8080
 
-ENTRYPOINT [ "node", "dist/main.js" ]
+ENTRYPOINT ["node", "dist/main.js"]

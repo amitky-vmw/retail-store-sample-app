@@ -1,12 +1,11 @@
 # Build Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build-env
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     git \
     golang \
+    gcc \
+    gcc-c++ \
     && \
     dnf clean all
 
@@ -14,12 +13,10 @@ RUN mkdir -p "${GOPATH}/src" "${GOPATH}/bin" /appsrc
 
 WORKDIR /appsrc
 
-ENV GOPROXY=https://goproxy.io,direct
-
-COPY go.mod go.sum ./
+COPY src/catalog/go.mod src/catalog/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY src/catalog/ .
 
 RUN go build -o main main.go
 
@@ -30,9 +27,6 @@ ENV APPUSER=appuser
 ENV APPUID=1000
 ENV APPGID=1000
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     shadow-utils \
     && \
@@ -50,8 +44,8 @@ USER appuser
 
 COPY --chown=appuser:appuser --from=build-env /appsrc/main /app/
 
-COPY ./ATTRIBUTION.md ./LICENSES.md
-
 ENV GIN_MODE=release
+
+EXPOSE 8080
 
 ENTRYPOINT ["/app/main"]

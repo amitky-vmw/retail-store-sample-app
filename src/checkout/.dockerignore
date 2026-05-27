@@ -1,8 +1,21 @@
-Dockerfile
-.dockerignore
-docker-compose.yml
+.git
+.gitmodules
 .gitignore
-chart
-scripts
-dist
-node_modules
+# Exclude other services (not needed for checkout build)
+src/ui
+src/catalog
+src/cart
+src/orders
+src/load-generator
+# Exclude checkout-specific non-build files
+src/checkout/Dockerfile
+src/checkout/.dockerignore
+src/checkout/docker-compose.yml
+src/checkout/chart
+src/checkout/scripts
+src/checkout/dist
+src/checkout/node_modules
+src/checkout/test
+src/checkout/coverage
+src/checkout/.git
+src/checkout/.gitignore

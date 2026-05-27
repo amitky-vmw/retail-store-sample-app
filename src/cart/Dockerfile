@@ -1,64 +1,48 @@
 # Build Stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023 as build-env
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build-env
 
-# We tell DNF not to install Recommends and Suggests packages, keeping our
-# installed set of packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     maven \
     java-21-amazon-corretto-headless \
-    which \
+    findutils \
     tar \
     gzip \
     && \
     dnf clean all
 
-ARG JAR_PATH
+WORKDIR /build
 
-VOLUME /tmp
-WORKDIR /
-
-COPY .mvn .mvn
-COPY mvnw .
-COPY pom.xml .
+COPY src/cart/.mvn .mvn
+COPY src/cart/mvnw .
+COPY src/cart/pom.xml .
 
 RUN ./mvnw dependency:go-offline -B -q
 
-COPY ./src ./src
+COPY src/cart/src ./src
 
-RUN ./mvnw -DskipTests package -q && \
-    mv /target/carts-0.0.1-SNAPSHOT.jar /app.jar
+RUN ./mvnw -DskipTests package -B -q -T 1C && \
+    mv /build/target/carts-0.0.1-SNAPSHOT.jar /app.jar
 
 # Package Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     java-21-amazon-corretto-headless \
+    findutils \
     shadow-utils \
     && \
     dnf clean all
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
-
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -m appuser
 
 ENV JAVA_TOOL_OPTIONS=
 ENV SPRING_PROFILES_ACTIVE=prod
 
 WORKDIR /app
-USER appuser
-
-COPY ./ATTRIBUTION.md ./LICENSES.md
+COPY --chown=appuser:appuser src/cart/ATTRIBUTION.md ./LICENSES.md
 COPY --chown=appuser:appuser --from=build-env /app.jar .
+
+USER appuser
 
 EXPOSE 8080
 

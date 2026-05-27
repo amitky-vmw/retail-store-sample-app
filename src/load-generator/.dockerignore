@@ -1,4 +1,9 @@
-scripts
-node_modules
-package*
-README.md
+.git
+.gitmodules
+.gitignore
+src/ui
+src/catalog
+src/cart
+src/orders
+src/checkout
+*.md

@@ -1,5 +1,11 @@
-Dockerfile
-.dockerignore
-docker-compose.yml
+.git
+.gitmodules
 .gitignore
-scripts
+src/ui
+src/cart
+src/orders
+src/checkout
+src/load-generator
+deploy
+docs
+*.md
