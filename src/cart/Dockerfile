@@ -1,55 +1,46 @@
 # Build Stage
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023 as build-env
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build-env
 
-# We tell DNF not to install Recommends and Suggests packages, keeping our
-# installed set of packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     maven \
     java-21-amazon-corretto-headless \
     which \
     tar \
     gzip \
+    findutils \
     && \
     dnf clean all
 
-ARG JAR_PATH
+WORKDIR /build
 
-VOLUME /tmp
-WORKDIR /
+# Copy Maven wrapper and POM first for dependency caching
+COPY src/cart/.mvn .mvn
+COPY src/cart/mvnw .
+COPY src/cart/pom.xml .
 
-COPY .mvn .mvn
-COPY mvnw .
-COPY pom.xml .
+RUN chmod +x mvnw && \
+    ./mvnw dependency:go-offline -B -q
 
-RUN ./mvnw dependency:go-offline -B -q
+# Copy checkstyle config (referenced as ../misc/style/java/checkstyle.xml from src/cart/)
+COPY src/misc/style/java/checkstyle.xml ../misc/style/java/checkstyle.xml
 
-COPY ./src ./src
+# Copy application source
+COPY src/cart/src ./src
 
-RUN ./mvnw -DskipTests package -q && \
-    mv /target/carts-0.0.1-SNAPSHOT.jar /app.jar
+RUN ./mvnw -DskipTests package -B -q && \
+    mv /build/target/carts-0.0.1-SNAPSHOT.jar /app.jar
 
 # Package Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
 RUN dnf --setopt=install_weak_deps=False install -q -y \
     java-21-amazon-corretto-headless \
     shadow-utils \
+    findutils \
     && \
     dnf clean all
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
-
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -m appuser
 
 ENV JAVA_TOOL_OPTIONS=
 ENV SPRING_PROFILES_ACTIVE=prod
@@ -57,7 +48,7 @@ ENV SPRING_PROFILES_ACTIVE=prod
 WORKDIR /app
 USER appuser
 
-COPY ./ATTRIBUTION.md ./LICENSES.md
+COPY --chown=appuser:appuser src/cart/ATTRIBUTION.md ./LICENSES.md
 COPY --chown=appuser:appuser --from=build-env /app.jar .
 
 EXPOSE 8080

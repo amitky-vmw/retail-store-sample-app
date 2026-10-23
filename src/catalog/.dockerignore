@@ -1,5 +1,9 @@
-Dockerfile
-.dockerignore
-docker-compose.yml
+.git
+.gitmodules
 .gitignore
-scripts
+src/catalog/Dockerfile
+src/catalog/.dockerignore
+src/catalog/docker-compose.yml
+src/catalog/scripts
+src/catalog/chart
+src/catalog/test

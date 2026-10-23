@@ -1,40 +1,45 @@
-FROM node:20-alpine AS build
-WORKDIR /usr/src/app
-COPY --chown=node:node package*.json ./
-COPY --chown=node:node . .
-RUN yarn install --frozen-lockfile
-RUN yarn build
-USER node
+# Build stage
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build
 
-
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023
-
-# We tell DNF not to install Recommends and Suggests packages, which are
-# weak dependencies in DNF terminology, thus keeping our installed set of
-# packages as minimal as possible.
-RUN dnf --setopt=install_weak_deps=False install -q -y \
-    nodejs20 \
-    shadow-utils \
-    && \
+RUN dnf update -y && \
+    dnf install -y nodejs20 nodejs20-npm shadow-utils && \
     dnf clean all
 
-RUN alternatives --install /usr/bin/node node /usr/bin/node-20 90
+WORKDIR /build
 
-ENV APPUSER=appuser
-ENV APPUID=1000
-ENV APPGID=1000
+# Copy package manifest (drop yarn.lock since it's Berry format, incompatible with npm)
+COPY src/checkout/package.json ./
 
-RUN useradd \
-    --home "/app" \
-    --create-home \
-    --user-group \
-    --uid "$APPUID" \
-    "$APPUSER"
+# Remove packageManager field to avoid corepack enforcement, then install with npm
+RUN node -e "const p=require('./package.json'); delete p.packageManager; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2));"
+
+# Install all dependencies with npm (devDeps needed for nest build)
+RUN npm install --legacy-peer-deps
+
+# Copy source
+COPY src/checkout/src ./src
+COPY src/checkout/tsconfig.json src/checkout/tsconfig.build.json src/checkout/nest-cli.json ./
+
+# Build the NestJS application
+RUN ./node_modules/.bin/nest build
+
+# Runtime stage
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+
+RUN dnf update -y && \
+    dnf install -y nodejs20 shadow-utils && \
+    dnf clean all
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
+
+# Copy built artifacts and production node_modules from build stage
+COPY --chown=appuser:appuser --from=build /build/dist ./dist
+COPY --chown=appuser:appuser --from=build /build/node_modules ./node_modules
+
 USER appuser
 
-COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
-COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+EXPOSE 8080
 
-ENTRYPOINT [ "node", "dist/main.js" ]
+ENTRYPOINT ["node", "dist/main.js"]

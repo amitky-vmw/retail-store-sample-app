@@ -1,8 +1,17 @@
-Dockerfile
-.dockerignore
-docker-compose.yml
+.git
+.gitmodules
 .gitignore
-chart
-scripts
-dist
+# Other services - not needed for checkout build
+src/ui
+src/catalog
+src/cart
+src/orders
+src/load-generator
+# Dev/test artifacts
 node_modules
+dist
+coverage
+*.log
+.env
+docker-compose.yml
+chart/
