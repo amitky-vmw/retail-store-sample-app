@@ -1,0 +1,9 @@
+.git
+.gitmodules
+.gitignore
+**/node_modules
+**/target
+**/dist
+**/.nx
+**/coverage
+docs
